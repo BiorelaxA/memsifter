@@ -3,6 +3,7 @@ import os
 import sys
 
 import yaml
+import pyarrow.parquet as pq
 from easydict import EasyDict as edict
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/../")
@@ -24,20 +25,32 @@ def vllm_inference(args: Dict[str, Any]):
     model_name = args["model_name"]
     debug = args["debug"]
     embed_model = args["embed_model"]
-    output_dir = args["output_dir"]
+    # Ray workers execute inside a runtime working directory, so relative data
+    # paths may no longer point at the driver's repository checkout.
+    output_dir = os.path.abspath(os.path.expanduser(args["output_dir"]))
 
     data_file = f"{output_dir}/{embed_model}/{dataset_name}_{dataset_split}_embed.parquet"
     output_file = f"{output_dir}/{model_name}/{dataset_name}_{dataset_split}_ranking.parquet"
+    if not os.path.isfile(data_file):
+        raise FileNotFoundError(
+            f"Embedding input not found: {data_file}. "
+            "Use an absolute --output_dir or prepare the expected input link."
+        )
     os.makedirs(f"{output_dir}/{model_name}", exist_ok=True)
 
 
-    ds = ray.data.read_parquet(data_file).map(parse_haystack_sessions)
-    # pd_frame = pd.read_parquet(data_file, engine='fastparquet')
-    # ds = ray.data.from_pandas(pd_frame)
-    logger.info(f'Loaded {ds.count()} entries from {data_file}')
+    # Count from Parquet metadata without executing the JSON parsing pipeline.
+    # In debug mode, limit the raw rows before parsing the session histories.
+    num_entries = pq.read_metadata(data_file).num_rows
+    logger.info(f'Input contains {num_entries} entries: {data_file}')
+    parse_concurrency = max(1, args["override_num"])
+    ds = ray.data.read_parquet(
+        data_file, override_num_blocks=parse_concurrency
+    )
     if debug:
         ds = ds.limit(10)
-        logger.info(f"Debug mode enabled, only processing {ds.count()} entries")
+        logger.info(f"Debug mode enabled, only processing {min(10, num_entries)} entries")
+    ds = ds.map(parse_haystack_sessions, concurrency=parse_concurrency)
 
     # load prompt config
     prompt_name = args["prompt_name"]
@@ -92,9 +105,11 @@ def vllm_inference(args: Dict[str, Any]):
     )
     # save ds
     ds = ds.map(dump_haystack_sessions)
-    ds.to_pandas().to_parquet(output_file, index=False, compression="zstd")
-    results = ds.take_all()
-    logger.info(f"Total {ds.count()} entries processed, saved to {output_file}")
+    # Consume the inference pipeline once.  Further take_all/count calls on a
+    # lazy Dataset can execute the model again.
+    results = ds.to_pandas()
+    results.to_parquet(output_file, index=False, compression="zstd")
+    logger.info(f"Total {len(results)} entries processed, saved to {output_file}")
 
 
 if __name__ == "__main__":

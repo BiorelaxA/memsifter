@@ -7,7 +7,16 @@ import numpy as np
 import ray
 from easydict import EasyDict as edict
 from loguru import logger
-from ray.data.llm import vLLMEngineProcessorConfig, build_llm_processor, Processor
+from ray.data.llm import vLLMEngineProcessorConfig, Processor
+
+# Ray <= 2.55 exported this helper as ``build_llm_processor``.  Newer Ray
+# releases renamed it to ``build_processor``.  Supporting both names lets the
+# inference code run with the CUDA 12.6 compatible Ray/vLLM stack as well as
+# newer CUDA 13 environments.
+try:
+    from ray.data.llm import build_processor
+except ImportError:
+    from ray.data.llm import build_llm_processor as build_processor
 from transformers import AutoTokenizer
 
 sys.path.append("./")
@@ -22,9 +31,20 @@ def start_local_ray(envs: Dict = None):
     logger.info(f"start local ray working dir {working_dir}")
     runtime_env = {
         "env_vars": env_vars,
+        "worker_process_setup_hook": "utils.ray_runtime.setup_worker_event_loop",
         "working_dir": working_dir,
         "py_modules": ["./utils"],
-        "excludes": ["**/*log*", "log_*", "*.log", "*.jsonl", "*.parquet", "*.json"]
+        "excludes": [
+            "models/**",
+            "data/**",
+            ".git/**",
+            "**/*log*",
+            "log_*",
+            "*.log",
+            "*.jsonl",
+            "*.parquet",
+            "*.json",
+        ]
     }
     ray.init(
         runtime_env=runtime_env,
@@ -105,7 +125,7 @@ def build_vllm_processor(
         concurrency=concurrency,
         batch_size=batch_size,
     )
-    processor = build_llm_processor(
+    processor = build_processor(
         config,
         preprocess=lambda row: dict(
             messages=row["messages"],
@@ -262,5 +282,3 @@ class RandomFilterActor: # not final use, just for debug
         )
         entry["prefiltered_session_idx"] = selected_session_idx
         return entry
-
-

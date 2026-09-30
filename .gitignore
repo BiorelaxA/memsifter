@@ -2,6 +2,10 @@
 CLAUDE.md
 MemSifter.pdf
 model_card/
+/models/
+/data/locomo/
+/data/split_longmemeval_s/
+/data/split_longmemeval_m/
 rebuttal/
 review.md
 scripts/count_dataset_rows.py

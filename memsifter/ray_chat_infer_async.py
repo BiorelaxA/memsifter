@@ -148,30 +148,14 @@ class ChatInferAsyncActor:
             )
             return construct_history_text(selected_sessions, selected_dates)
         elif self.method in ["ep2-DAPO-Qwen3-4B-Thinking"] or "DAPO-GenRank" in self.method:
-            similarities = row["similarities"]
-            assert len(similarities) == len(haystack_sessions), (
-                f"similarities length {len(similarities)} not equal to "
-                f"haystack_sessions length {len(haystack_sessions)}"
-            )
-            rank_scores = similarities.copy()
             haystack_session_gen_rankings = [
                 i for i in row["haystack_session_gen_rankings"]
                 if i < len(haystack_session_ids)
             ]
             pred_ranking_indexes = dedup_indexes(haystack_session_gen_rankings)
-            rank_score = len(pred_ranking_indexes)
-            for index in pred_ranking_indexes:
-                if index < len(haystack_sessions):
-                    rank_scores[index] = rank_score * 10
-                    rank_score -= 1
-            selected_session_indices = construct_retrieved_history_with_limited_context(
-                haystack_sessions,
-                self.max_input_tokens - question_token_num,
-                self.tokenizer,
-                haystack_dates,
-                "similarity",
-                rank_scores,
-            )
+            # The paper evaluates the downstream LLM with MemSifter's fixed top-10
+            # selection. Present those sessions in their original chronological order.
+            selected_session_indices = sorted(pred_ranking_indexes[:10])
             selected_sessions = [haystack_sessions[sid] for sid in selected_session_indices]
             selected_dates = (
                 [haystack_dates[sid] for sid in selected_session_indices]

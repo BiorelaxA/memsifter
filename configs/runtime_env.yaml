@@ -1,4 +1,5 @@
 working_dir: ./
+worker_process_setup_hook: utils.ray_runtime.setup_worker_event_loop
 excludes: ["/.git/", "**/*log*", "log_*", "*.log", "*.jsonl", "*.parquet", "*.json", "*.whl"]
 env_vars:
   TORCH_NCCL_AVOID_RECORD_STREAMS: "1"

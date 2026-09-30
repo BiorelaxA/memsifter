@@ -1,0 +1,21 @@
+# Inference environment for NVIDIA R560/R565 drivers (CUDA 12.x).
+# Install PyTorch and the CUDA-specific vLLM wheel first as documented in
+# RUNBOOK.md, then install this file.  Do not replace these pins with the
+# unpinned requirements.txt for inference.
+
+ray[data,train,tune,serve,llm]==2.48.0
+transformers==4.53.3
+sentence-transformers==4.1.0
+numpy==1.26.4
+pandas==2.2.3
+pyyaml
+loguru
+easydict
+openai==1.90.0
+tqdm
+hydra-core
+omegaconf
+fsspec
+aiohttp
+jieba
+nltk
